@@ -41,9 +41,3 @@ g++ -Wall -Wextra -std=c++11 src/*.cpp -o red_social
 # Ejecutar el programa
 ./red_social
 ```
-
-## Pruebas y Auditoría de Memoria
-
-El proyecto incluye herramientas internas para verificar el cumplimiento de los límites de recursos:
-1.  **Cero Fugas de Memoria:** Validadas mediante el módulo `MedidorRecursos` interno y comprobaciones externas con Valgrind/AddressSanitizer.
-2.  **Casos Límite:** Soporte robusto para mensajes masivos (truncados a 512 caracteres), cadenas con delimitadores internos ocultos, y desbordamientos prevenidos en la manipulación de bits.
