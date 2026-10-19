@@ -3,6 +3,8 @@
 #include "MedidorRecursos.h"
 #include <fstream>
 #include <cstdlib>
+#include <cstdio>
+#include <cstring>
 
 using namespace std;
 
@@ -145,25 +147,42 @@ void RedSocial::guardarCambiosRed(const char* rutaMensajes, const char* rutaAmis
                         << m.getTexto() << "\n";
             }
             archMsg.close();
+            cout << "[OK] Mensajes nuevos agregados (append): " << (mensajes.getTamano() - mensajesAlCargar) << " registros." << endl;
+        } else {
+            cout << "[Error] No se pudo abrir (append) el archivo de mensajes: " << rutaMensajes << endl;
         }
     } else if (huboCambioEstadoLeido) {
-        // Si se marcaron mensajes como leídos, se actualiza el archivo de mensajes con el nuevo estado
-        ofstream archMsg(rutaMensajes, ios::trunc);
-        if (archMsg.is_open()) {
-            for (int i = 0; i < mensajes.getTamano(); i++) {
-                MedidorRecursos::contarIteracion();
-                const Mensaje& m = mensajes[i];
-                archMsg << m.getIdEmisor() << ";"
-                        << m.getIdReceptor() << ";"
-                        << m.getFechaEnvio() << ";"
-                        << (m.estaLeido() ? 1 : 0) << ";"
-                        << m.getTexto() << "\n";
+        // -- Reescritura segura del archivo de mensajes usando archivo temporal --
+        char tmpMsgPath[1024];
+        if (snprintf(tmpMsgPath, sizeof(tmpMsgPath), "%s.tmp", rutaMensajes) < 0) {
+            cout << "[Error] No se pudo construir nombre temporal para mensajes." << endl;
+        } else {
+            ofstream archTmp(tmpMsgPath, ios::trunc);
+            if (archTmp.is_open()) {
+                for (int i = 0; i < mensajes.getTamano(); i++) {
+                    MedidorRecursos::contarIteracion();
+                    const Mensaje& m = mensajes[i];
+                    archTmp << m.getIdEmisor() << ";"
+                            << m.getIdReceptor() << ";"
+                            << m.getFechaEnvio() << ";"
+                            << (m.estaLeido() ? 1 : 0) << ";"
+                            << m.getTexto() << "\n";
+                }
+                archTmp.close();
+                if (rename(tmpMsgPath, rutaMensajes) != 0) {
+                    cout << "[Error] No se pudo reemplazar el archivo de mensajes: " << rutaMensajes << endl;
+                    // intentar limpiar temporal
+                    remove(tmpMsgPath);
+                } else {
+                    cout << "[OK] Archivo de mensajes actualizado correctamente (reescritura segura)." << endl;
+                }
+            } else {
+                cout << "[Error] No se pudo crear archivo temporal para mensajes: " << tmpMsgPath << endl;
             }
-            archMsg.close();
         }
     }
 
-    // 2. Escritura incremental (deltas) de nuevas amistades aceptadas
+    // 2. Escritura incremental (deltas) de nuevas amistades aceptadas (append)
     if (nuevasAmistadesA.getTamano() > 0) {
         ofstream archAmi(rutaAmistades, ios::app);
         if (archAmi.is_open()) {
@@ -172,22 +191,41 @@ void RedSocial::guardarCambiosRed(const char* rutaMensajes, const char* rutaAmis
                 archAmi << nuevasAmistadesA[i] << ";" << nuevasAmistadesB[i] << "\n";
             }
             archAmi.close();
+            cout << "[OK] Nuevas amistades persistidas (append): " << nuevasAmistadesA.getTamano() << " parejas." << endl;
+        } else {
+            cout << "[Error] No se pudo abrir (append) el archivo de amistades: " << rutaAmistades << endl;
         }
     }
 
-    // 3. Persistir estado vigente de solicitudes pendientes
-    ofstream archSol(rutaSolicitudes, ios::trunc);
-    if (archSol.is_open()) {
-        for (int u = 0; u < usuarios.getTamano(); u++) {
-            const ListaDinamica<int>& sols = usuarios[u].getSolicitudesRecibidas();
-            for (int s = 0; s < sols.getTamano(); s++) {
-                MedidorRecursos::contarIteracion();
-                archSol << sols[s] << ";" << u << "\n";
+    // 3. Persistir estado vigente de solicitudes pendientes -> reescritura segura
+    {
+        char tmpSolPath[1024];
+        if (snprintf(tmpSolPath, sizeof(tmpSolPath), "%s.tmp", rutaSolicitudes) < 0) {
+            cout << "[Error] No se pudo construir nombre temporal para solicitudes." << endl;
+        } else {
+            ofstream archTmpS(tmpSolPath, ios::trunc);
+            if (archTmpS.is_open()) {
+                for (int u = 0; u < usuarios.getTamano(); u++) {
+                    const ListaDinamica<int>& sols = usuarios[u].getSolicitudesRecibidas();
+                    for (int s = 0; s < sols.getTamano(); s++) {
+                        MedidorRecursos::contarIteracion();
+                        archTmpS << sols[s] << ";" << u << "\n";
+                    }
+                }
+                archTmpS.close();
+                if (rename(tmpSolPath, rutaSolicitudes) != 0) {
+                    cout << "[Error] No se pudo reemplazar el archivo de solicitudes: " << rutaSolicitudes << endl;
+                    remove(tmpSolPath);
+                } else {
+                    cout << "[OK] Archivo de solicitudes actualizado correctamente (reescritura segura)." << endl;
+                }
+            } else {
+                cout << "[Error] No se pudo crear archivo temporal para solicitudes: " << tmpSolPath << endl;
             }
         }
-        archSol.close();
     }
 
+    // Actualizar controles internos
     mensajesAlCargar = mensajes.getTamano();
     huboCambioEstadoLeido = false;
     nuevasAmistadesA.vaciar();
@@ -323,299 +361,3 @@ void RedSocial::mostrarFotosAmigos(bool esRefresco) {
 }
 
 // ============================================================
-// FUNCIONALIDADES III y IV (Conector base para Persona A)
-// ============================================================
-
-bool RedSocial::enviarSolicitud(const Cadena& destino) {
-    if (!haySesionActiva()) return false;
-    int idDestino = tabla.buscar(destino);
-    if (idDestino < 0 || idDestino == usuarioActual) {
-        cout << "[Error] Usuario destino invalido o eres tu mismo." << endl;
-        return false;
-    }
-    if (relaciones.sonAmigos(usuarioActual, idDestino)) {
-        cout << "[Aviso] Ya eres amigo de @" << destino << "." << endl;
-        return false;
-    }
-    if (usuarios[idDestino].tieneSolicitudDe(usuarioActual) ||
-        usuarios[usuarioActual].tieneSolicitudDe(idDestino)) {
-        cout << "[Aviso] Ya existe una solicitud pendiente entre ambos." << endl;
-        return false;
-    }
-    usuarios[idDestino].agregarSolicitud(usuarioActual);
-    cout << "[OK] Solicitud enviada a @" << destino << "." << endl;
-    return true;
-}
-
-void RedSocial::aceptarSolicitud(int idRemitente) {
-    if (!haySesionActiva()) return;
-    if (!usuarios[usuarioActual].tieneSolicitudDe(idRemitente)) {
-        cout << "[Error] No tienes una solicitud pendiente de ese usuario." << endl;
-        return;
-    }
-    usuarios[usuarioActual].quitarSolicitud(idRemitente);
-    relaciones.agregarAmistad(usuarioActual, idRemitente);
-    nuevasAmistadesA.agregar(usuarioActual);
-    nuevasAmistadesB.agregar(idRemitente);
-    cout << "[OK] Ahora eres amigo de @" << usuarios[idRemitente].getNombreUsuario() << "." << endl;
-}
-
-void RedSocial::visitarPerfilAmigo(const Cadena& amigo) {
-    // Implementación completa del carrusel corresponde a Persona A (Día 8)
-    int idAmigo = tabla.buscar(amigo);
-    if (idAmigo < 0) {
-        cout << "[Error] El usuario @" << amigo << " no existe." << endl;
-        return;
-    }
-    cout << "\n--- PERFIL DE @" << usuarios[idAmigo].getNombreUsuario() << " ---" << endl;
-    cout << "Ciudad: " << usuarios[idAmigo].getCiudad() << " | Pais: " << usuarios[idAmigo].getPais() << endl;
-    cout << "(Modulo de Carrusel Circular administrado por Persona A)" << endl;
-}
-
-// ============================================================
-// FUNCIONALIDAD V (PERSONA B): SUGERENCIAS DE AMISTAD TOP-K
-// Complejidad: O(N * (bloques_64bits + K)) con K <= 20
-// ============================================================
-
-void RedSocial::sugerirAmigos(int k) {
-    if (!haySesionActiva()) return;
-
-    if (k < 1 || k > 20) {
-        cout << "[Error] El parametro K debe estar entre 1 y 20." << endl;
-        return;
-    }
-
-    int* topIds = new int[k];
-    int* topComunes = new int[k];
-    int encontrados = 0;
-
-    int totalUsuarios = usuarios.getTamano();
-
-    for (int u = 0; u < totalUsuarios; u++) {
-        MedidorRecursos::contarIteracion();
-        if (u == usuarioActual) continue;
-        if (relaciones.sonAmigos(usuarioActual, u)) continue;
-        // Ignorar si ya hay solicitud pendiente en cualquier dirección
-        if (usuarios[u].tieneSolicitudDe(usuarioActual) ||
-            usuarios[usuarioActual].tieneSolicitudDe(u)) {
-            continue;
-        }
-
-        int enComun = relaciones.contarEnComun(usuarioActual, u);
-        if (enComun <= 0) continue;
-
-        // Inserción ordenada descendente en el Top-K (acotado a máximo 20 posiciones)
-        if (encontrados < k || enComun > topComunes[encontrados - 1]) {
-            int pos = encontrados;
-            if (encontrados < k) {
-                encontrados++;
-            } else {
-                pos = k - 1;
-            }
-            while (pos > 0 && topComunes[pos - 1] < enComun) {
-                MedidorRecursos::contarIteracion();
-                topComunes[pos] = topComunes[pos - 1];
-                topIds[pos] = topIds[pos - 1];
-                pos--;
-            }
-            topComunes[pos] = enComun;
-            topIds[pos] = u;
-        }
-    }
-
-    cout << "\n================ SUGERENCIAS DE AMISTAD (TOP-" << k << ") ================" << endl;
-    if (encontrados == 0) {
-        cout << "No se encontraron sugerencias con amigos en comun en este momento." << endl;
-        delete[] topIds;
-        delete[] topComunes;
-        return;
-    }
-
-    for (int i = 0; i < encontrados; i++) {
-        int idCand = topIds[i];
-        cout << (i + 1) << ". @" << usuarios[idCand].getNombreUsuario()
-             << " (" << topComunes[i] << " amigos en comun) - "
-             << usuarios[idCand].getCiudad() << ", " << usuarios[idCand].getPais() << endl;
-    }
-    cout << "==================================================================" << endl;
-
-    cout << "\n¿Desea enviar solicitud a alguna sugerencia? (0 = No, o ingrese el numero 1.." << encontrados << "): ";
-    int eleccion = 0;
-    if (cin >> eleccion) {
-        cin.ignore(10000, '\n');
-        if (eleccion >= 1 && eleccion <= encontrados) {
-            int idElegido = topIds[eleccion - 1];
-            enviarSolicitud(usuarios[idElegido].getNombreUsuario());
-        } else if (eleccion != 0) {
-            cout << "[Aviso] Numero fuera del rango de sugerencias mostradas." << endl;
-        }
-    } else {
-        cin.clear();
-        cin.ignore(10000, '\n');
-    }
-
-    delete[] topIds;
-    delete[] topComunes;
-}
-
-// ============================================================
-// FUNCIONALIDAD VI (PERSONA B): SISTEMA DE MENSAJERÍA
-// ============================================================
-
-bool RedSocial::enviarMensaje(const Cadena& amigo, const Cadena& texto, const Fecha& fechaActual) {
-    if (!haySesionActiva()) return false;
-
-    // 1. Validar longitud del texto (no vacío y <= 512 caracteres)
-    int lon = texto.getLongitud();
-    if (lon == 0) {
-        cout << "[Error] El mensaje no puede estar vacio." << endl;
-        return false;
-    }
-    if (lon > 512) {
-        cout << "[Error] El mensaje excede el limite maximo de 512 caracteres (" << lon << ")." << endl;
-        return false;
-    }
-
-    // 2. Validar existencia y relación de amistad con el receptor
-    int idReceptor = tabla.buscar(amigo);
-    if (idReceptor < 0) {
-        cout << "[Error] El usuario @" << amigo << " no existe." << endl;
-        return false;
-    }
-    if (!relaciones.sonAmigos(usuarioActual, idReceptor)) {
-        cout << "[Error] Solo puedes enviar mensajes a usuarios que sean tus amigos." << endl;
-        return false;
-    }
-
-    // 3. Crear y despachar mensaje
-    Mensaje nuevo(usuarioActual, idReceptor, texto, fechaActual, false);
-    mensajes.agregar(nuevo);
-    int idxMsg = mensajes.getTamano() - 1;
-
-    usuarios[usuarioActual].registrarMensajeEnviado(idxMsg);
-    usuarios[idReceptor].registrarMensajeRecibido(idxMsg);
-
-    cout << "[OK] Mensaje enviado a @" << amigo << " con fecha " << fechaActual << "." << endl;
-    return true;
-}
-
-void RedSocial::leerMensajesNuevos() {
-    if (!haySesionActiva()) return;
-
-    const ListaDinamica<int>& recibidos = usuarios[usuarioActual].getMensajesRecibidos();
-    ListaDinamica<int> noLeidos;
-
-    for (int i = 0; i < recibidos.getTamano(); i++) {
-        MedidorRecursos::contarIteracion();
-        int idxMsg = recibidos[i];
-        if (!mensajes[idxMsg].estaLeido()) {
-            noLeidos.agregar(idxMsg);
-        }
-    }
-
-    if (noLeidos.estaVacia()) {
-        cout << "\n[Bandeja al dia] No tienes mensajes nuevos sin leer." << endl;
-        return;
-    }
-
-    // Ordenamiento por inserción según Fecha de envío (cronológico ascendente)
-    for (int i = 1; i < noLeidos.getTamano(); i++) {
-        int claveIdx = noLeidos[i];
-        Fecha fechaClave = mensajes[claveIdx].getFechaEnvio();
-        int j = i - 1;
-        while (j >= 0 && fechaClave < mensajes[noLeidos[j]].getFechaEnvio()) {
-            MedidorRecursos::contarIteracion();
-            noLeidos[j + 1] = noLeidos[j];
-            j--;
-        }
-        noLeidos[j + 1] = claveIdx;
-    }
-
-    cout << "\n================ MENSAJES NUEVOS (" << noLeidos.getTamano() << ") ================" << endl;
-    for (int i = 0; i < noLeidos.getTamano(); i++) {
-        MedidorRecursos::contarIteracion();
-        int idxMsg = noLeidos[i];
-        Mensaje& m = mensajes[idxMsg];
-        const Cadena& remitente = usuarios[m.getIdEmisor()].getNombreUsuario();
-
-        cout << "[" << m.getFechaEnvio() << "] De @" << remitente << ": "
-             << m.getTexto() << endl;
-
-        m.marcarLeido();
-        huboCambioEstadoLeido = true;
-    }
-    cout << "=========================================================" << endl;
-}
-
-void RedSocial::buscarMensajesPorFecha(const Fecha& ini, const Fecha& fin) {
-    if (!haySesionActiva()) return;
-
-    if (!ini.esValida() || !fin.esValida() || fin < ini) {
-        cout << "[Error] Rango de fechas invalido. Verifique que fechaInicio <= fechaFin." << endl;
-        return;
-    }
-
-    // Según apartado VI.c, se listan todos los mensajes RECIBIDOS en ese rango (ambas inclusive)
-    const ListaDinamica<int>& recibidos = usuarios[usuarioActual].getMensajesRecibidos();
-    ListaDinamica<int> enRango;
-
-    for (int i = 0; i < recibidos.getTamano(); i++) {
-        MedidorRecursos::contarIteracion();
-        int idx = recibidos[i];
-        const Fecha& f = mensajes[idx].getFechaEnvio();
-        if (ini <= f && f <= fin) {
-            enRango.agregar(idx);
-        }
-    }
-
-    if (enRango.estaVacia()) {
-        cout << "\nNo se encontraron mensajes recibidos entre " << ini
-             << " y " << fin << "." << endl;
-        return;
-    }
-
-    // Ordenar cronológicamente para presentación limpia
-    for (int i = 1; i < enRango.getTamano(); i++) {
-        int clave = enRango[i];
-        Fecha fClave = mensajes[clave].getFechaEnvio();
-        int j = i - 1;
-        while (j >= 0 && fClave < mensajes[enRango[j]].getFechaEnvio()) {
-            MedidorRecursos::contarIteracion();
-            enRango[j + 1] = enRango[j];
-            j--;
-        }
-        enRango[j + 1] = clave;
-    }
-
-    cout << "\n=== MENSAJES RECIBIDOS ENTRE " << ini << " Y " << fin
-         << " (" << enRango.getTamano() << ") ===" << endl;
-    for (int i = 0; i < enRango.getTamano(); i++) {
-        MedidorRecursos::contarIteracion();
-        const Mensaje& m = mensajes[enRango[i]];
-        cout << "[" << m.getFechaEnvio() << "] De @"
-             << usuarios[m.getIdEmisor()].getNombreUsuario() << ": "
-             << m.getTexto() << endl;
-    }
-}
-
-// ============================================================
-// CONSOLIDACIÓN DE MEMORIA DINÁMICA PARA MEDIDOR DE RECURSOS
-// ============================================================
-
-long RedSocial::bytesDinamicos() const {
-    long total = usuarios.bytesDinamicos() +
-                 mensajes.bytesDinamicos() +
-                 relaciones.bytesDinamicos() +
-                 tabla.bytesDinamicos() +
-                 ultimosAmigosMostrados.bytesDinamicos() +
-                 nuevasAmistadesA.bytesDinamicos() +
-                 nuevasAmistadesB.bytesDinamicos();
-
-    for (int i = 0; i < usuarios.getTamano(); i++) {
-        total += usuarios[i].bytesDinamicos();
-    }
-    for (int i = 0; i < mensajes.getTamano(); i++) {
-        total += mensajes[i].bytesDinamicos();
-    }
-    return total;
-}
