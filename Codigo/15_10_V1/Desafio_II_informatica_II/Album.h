@@ -14,26 +14,19 @@ private:
     ListaDinamica<Foto> fotos;
 
 public:
-    Album() : nombre(""), ruta(""), privacidad(0), fotos() {}
-    Album(const Cadena& n, const Cadena& r, int priv)
-        : nombre(n), ruta(r), privacidad(priv), fotos() {}
-    Album(const Album& otra)
-        : nombre(otra.nombre), ruta(otra.ruta), privacidad(otra.privacidad), fotos(otra.fotos) {}
+    Album();
+    Album(const Cadena& n, const Cadena& r, int priv);
+    Album(const Album& otra);
 
-    const Cadena& getNombre() const { return nombre; }
-    int getPrivacidad() const { return privacidad; }
-    int getCantidadFotos() const { return fotos.getTamano(); }
-    Foto getFoto(int i) const { return fotos[i]; }
-    void agregarFoto(const Foto& f) { fotos.agregar(f); }
-    bool esVisiblePara(bool esAmigo) const { return privacidad == 0 || (privacidad == 1 && esAmigo); }
+    const Cadena& getNombre() const;
+    int getPrivacidad() const;
+    int getCantidadFotos() const;
+    Foto getFoto(int i) const;
+    Foto& getFotoRef(int i);
+    void agregarFoto(const Foto& f);
+    bool esVisiblePara(bool esAmigo) const;
 
-    long bytesDinamicos() const {
-        long b = nombre.bytesDinamicos() + ruta.bytesDinamicos() + fotos.bytesDinamicos();
-        for (int i = 0; i < fotos.getTamano(); i++) {
-            b += fotos[i].bytesDinamicos();
-        }
-        return b;
-    }
+    long bytesDinamicos() const;
 };
 
 #endif // ALBUM_H

@@ -2,25 +2,30 @@
 #include "Usuario.h"
 #include "MedidorRecursos.h"
 
-Usuario::Usuario() : id(-1), nombreUsuario(""), fechaNacimiento(), correo(""),
-    rutaFotoPerfil(""), contrasena(""), ciudad(""), pais(""), fechaInscripcion() {}
+Usuario::Usuario()
+    : id(-1), nombreUsuario(""), fechaNacimiento(), correo(""), rutaFotoPerfil(""),
+      contrasena(""), ciudad(""), pais(""), fechaInscripcion(), albumes(),
+      mensajesEnviados(), mensajesRecibidos(), solicitudesRecibidas() {}
 
-Usuario::Usuario(const Cadena& n) : id(-1), nombreUsuario(n), fechaNacimiento(), correo(""),
-    rutaFotoPerfil(""), contrasena(""), ciudad(""), pais(""), fechaInscripcion() {}
+Usuario::Usuario(const Cadena& n)
+    : id(-1), nombreUsuario(n), fechaNacimiento(), correo(""), rutaFotoPerfil(""),
+      contrasena(""), ciudad(""), pais(""), fechaInscripcion(), albumes(),
+      mensajesEnviados(), mensajesRecibidos(), solicitudesRecibidas() {}
 
 Usuario::Usuario(int idUsuario, const Cadena& nombre, const Fecha& nacimiento,
                  const Cadena& mail, const Cadena& foto, const Cadena& pass,
                  const Cadena& ciu, const Cadena& pa, const Fecha& inscripcion)
-    : id(idUsuario), nombreUsuario(nombre), fechaNacimiento(nacimiento),
-    correo(mail), rutaFotoPerfil(foto), contrasena(pass),
-    ciudad(ciu), pais(pa), fechaInscripcion(inscripcion) {}
+    : id(idUsuario), nombreUsuario(nombre), fechaNacimiento(nacimiento), correo(mail),
+      rutaFotoPerfil(foto), contrasena(pass), ciudad(ciu), pais(pa),
+      fechaInscripcion(inscripcion), albumes(), mensajesEnviados(), mensajesRecibidos(),
+      solicitudesRecibidas() {}
 
 Usuario::Usuario(const Usuario& otro)
     : id(otro.id), nombreUsuario(otro.nombreUsuario), fechaNacimiento(otro.fechaNacimiento),
-    correo(otro.correo), rutaFotoPerfil(otro.rutaFotoPerfil), contrasena(otro.contrasena),
-    ciudad(otro.ciudad), pais(otro.pais), fechaInscripcion(otro.fechaInscripcion),
-    albumes(otro.albumes), mensajesEnviados(otro.mensajesEnviados),
-    mensajesRecibidos(otro.mensajesRecibidos), solicitudesRecibidas(otro.solicitudesRecibidas) {}
+      correo(otro.correo), rutaFotoPerfil(otro.rutaFotoPerfil), contrasena(otro.contrasena),
+      ciudad(otro.ciudad), pais(otro.pais), fechaInscripcion(otro.fechaInscripcion),
+      albumes(otro.albumes), mensajesEnviados(otro.mensajesEnviados),
+      mensajesRecibidos(otro.mensajesRecibidos), solicitudesRecibidas(otro.solicitudesRecibidas) {}
 
 int Usuario::getId() const { return id; }
 const Cadena& Usuario::getNombreUsuario() const { return nombreUsuario; }
@@ -75,6 +80,7 @@ const ListaDinamica<int>& Usuario::getMensajesEnviados() const { return mensajes
 const ListaDinamica<int>& Usuario::getMensajesRecibidos() const { return mensajesRecibidos; }
 const ListaDinamica<int>& Usuario::getSolicitudesRecibidas() const { return solicitudesRecibidas; }
 const ListaDinamica<Album>& Usuario::getAlbumes() const { return albumes; }
+ListaDinamica<Album>& Usuario::getAlbumesModificables() { return albumes; }
 
 long Usuario::bytesDinamicos() const {
     long total = nombreUsuario.bytesDinamicos() +

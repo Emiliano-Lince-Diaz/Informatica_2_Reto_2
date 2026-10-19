@@ -25,7 +25,7 @@ private:
 
 public:
     Usuario();
-    Usuario(const Cadena& n); // Mantiene compatibilidad con tu test_estructuras.cpp
+    Usuario(const Cadena& n);
     Usuario(int idUsuario, const Cadena& nombre, const Fecha& nacimiento,
             const Cadena& mail, const Cadena& foto, const Cadena& pass,
             const Cadena& ciu, const Cadena& pa, const Fecha& inscripcion);
@@ -50,6 +50,7 @@ public:
     const ListaDinamica<int>& getMensajesRecibidos() const;
     const ListaDinamica<int>& getSolicitudesRecibidas() const;
     const ListaDinamica<Album>& getAlbumes() const;
+    ListaDinamica<Album>& getAlbumesModificables();
 
     long bytesDinamicos() const;
 };
